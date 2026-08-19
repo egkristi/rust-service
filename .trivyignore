@@ -4,3 +4,8 @@
 # by Kubernetes liveness/readiness probes (k8s/deployment.yaml) instead, which
 # is the primary deployment target for this template.
 DS-0026
+# KSV-0125: this check's built-in trust list only covers Azure ACR/AWS ECR/GCR
+# (see aquasecurity/trivy-checks uses_untrusted_registry.rego) — it doesn't
+# know about ghcr.io, which is this project's own registry, published to by
+# our own signed CD pipeline (.github/workflows/cd.yml).
+KSV-0125

@@ -17,6 +17,8 @@ Kubernetes.
 - Security scanning: dependency advisories/licenses (`cargo-deny`), Dockerfile lint
   (`hadolint`), secret scanning (`gitleaks`), and Dockerfile/Kubernetes/image
   vulnerability scanning (`trivy`), all runnable locally and enforced in CI
+- CD pipeline: multi-arch (amd64/arm64) image published to GHCR, keylessly signed
+  with `cosign`, with an SBOM and GitHub Release generated on version tags
 
 ## Project layout
 
@@ -152,6 +154,35 @@ and wires `livenessProbe`/`readinessProbe` to `/healthz` and `/readyz`.
 the built image to catch `Dockerfile`/runtime regressions.
 Dependabot (`.github/dependabot.yml`) keeps cargo, Docker, Dev Container, and Action
 versions current.
+
+## CD
+
+`.github/workflows/cd.yml` re-runs the cargo checks, then builds and publishes a
+multi-arch (`linux/amd64`, `linux/arm64`) image to [GHCR](https://ghcr.io):
+
+| Trigger | Tags pushed |
+|---------|-------------|
+| Push to `main` | `edge`, `sha-<short-sha>` |
+| Git tag `vX.Y.Z` | `X.Y.Z`, `X.Y`, `X`, `latest` |
+
+Each published image is keylessly signed with [`cosign`](https://docs.sigstore.dev/)
+using GitHub OIDC (no key management/secrets required), and an SPDX SBOM is
+generated (`anchore/sbom-action`) and uploaded as a build artifact. Pushing a
+`vX.Y.Z` tag additionally creates a GitHub Release with auto-generated notes and
+the SBOM attached.
+
+```bash
+docker pull ghcr.io/egkristi/rust-service:edge
+
+# Verify it was built and signed by this repo's CD workflow, not tampered with:
+cosign verify \
+  --certificate-identity-regexp "^https://github.com/egkristi/rust-service/" \
+  --certificate-oidc-issuer https://token.actions.githubusercontent.com \
+  ghcr.io/egkristi/rust-service:edge
+```
+
+To cut a release: tag a commit `git tag v0.1.0 && git push origin v0.1.0` (keep
+the tag in sync with the version in `Cargo.toml`).
 
 ## Security
 
