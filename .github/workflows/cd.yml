@@ -9,6 +9,10 @@ on:
 permissions:
   contents: read
 
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 env:
   REGISTRY: ghcr.io
   IMAGE_NAME: ${{ github.repository }}
@@ -127,7 +131,7 @@ jobs:
   release:
     name: create GitHub release
     if: startsWith(github.ref, 'refs/tags/v')
-    needs: [publish, sbom]
+    needs: [publish, sign, sbom]
     runs-on: ubuntu-latest
     permissions:
       contents: write
