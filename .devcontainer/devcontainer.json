@@ -1,0 +1,42 @@
+{
+  "name": "rust-service",
+  "image": "mcr.microsoft.com/devcontainers/rust:1-trixie",
+  "features": {
+    "ghcr.io/devcontainers/features/docker-in-docker:2": {
+      "moby": true
+    },
+    "ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {}
+  },
+  "containerEnv": {
+    "PORT": "8080"
+  },
+  "forwardPorts": [8080],
+  "portsAttributes": {
+    "8080": {
+      "label": "rust-service HTTP",
+      "onAutoForward": "notify"
+    }
+  },
+  "postCreateCommand": "rustup component add clippy rustfmt && rustup target add x86_64-unknown-linux-musl && cargo fetch",
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "rust-lang.rust-analyzer",
+        "tamasfe.even-better-toml",
+        "serayuzgur.crates",
+        "vadimcn.vscode-lldb",
+        "ms-azuretools.vscode-docker",
+        "ms-kubernetes-tools.vscode-kubernetes-tools"
+      ],
+      "settings": {
+        "editor.formatOnSave": true,
+        "[rust]": {
+          "editor.defaultFormatter": "rust-lang.rust-analyzer"
+        },
+        "rust-analyzer.check.command": "clippy",
+        "lldb.executable": "/usr/bin/lldb"
+      }
+    }
+  },
+  "remoteUser": "vscode"
+}

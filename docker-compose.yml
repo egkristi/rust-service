@@ -1,0 +1,12 @@
+services:
+  rust-service:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    image: rust-service:dev
+    ports:
+      - "8080:8080"
+    environment:
+      PORT: "8080"
+      RUST_LOG: "info"
+    restart: unless-stopped

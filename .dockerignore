@@ -1,0 +1,11 @@
+target/
+tests/
+.git/
+.github/
+.devcontainer/
+k8s/
+*.md
+Dockerfile*
+docker-compose.yml
+.gitignore
+.dockerignore
