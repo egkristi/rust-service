@@ -1,4 +1,4 @@
-.PHONY: all binary cargo fmt lint test container run container-run container-stop clean help
+.PHONY: all binary cargo fmt lint test container smoke-test run container-run container-stop clean help
 
 CARGO ?= cargo
 IMAGE_NAME ?= rust-service
@@ -6,7 +6,7 @@ IMAGE_TAG ?= dev
 CONTAINER_ENGINE ?= $(shell command -v podman >/dev/null 2>&1 && echo podman || echo docker)
 PORT ?= 8080
 
-all: cargo container ## Run the full cargo workflow, then build the container image
+all: cargo container smoke-test ## Run the full cargo workflow, build the image, and smoke-test it
 
 binary: ## Build a native release binary with cargo (target/release/rust-service)
 	$(CARGO) build --release
@@ -24,6 +24,9 @@ test: ## Run the test suite
 
 container: ## Build the production container image (docker or podman)
 	$(CONTAINER_ENGINE) build -t $(IMAGE_NAME):$(IMAGE_TAG) .
+
+smoke-test: container ## Build the image and black-box test it over real HTTP
+	CONTAINER_ENGINE=$(CONTAINER_ENGINE) IMAGE_NAME=$(IMAGE_NAME) IMAGE_TAG=$(IMAGE_TAG) PORT=$(PORT) ./scripts/smoke-test.sh
 
 run: binary ## Run the native binary locally
 	PORT=$(PORT) ./target/release/rust-service

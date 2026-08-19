@@ -20,15 +20,18 @@ Kubernetes.
 ```
 src/
   main.rs        # binary entrypoint: binds the socket, wires up graceful shutdown
-  lib.rs         # library crate root, re-exports `app`
+  lib.rs         # library crate root, re-exports `app` and `config`
   app.rs         # router + handlers, testable without a real socket
+  config.rs      # pure env-parsing helpers, unit-tested without touching real env vars
 tests/
   health.rs      # integration tests against the router (tower::ServiceExt::oneshot)
+scripts/
+  smoke-test.sh  # black-box HTTP tests against the built container image
 .devcontainer/   # VS Code Dev Container definition
 k8s/             # Deployment + Service manifests
 Dockerfile       # production, multi-stage container build
 docker-compose.yml
-Makefile         # binary / cargo / container build targets
+Makefile         # binary / cargo / container / smoke-test build targets
 ```
 
 ## Endpoints
@@ -76,6 +79,28 @@ docker run --rm -p 8080:8080 rust-service:dev
 
 `CONTAINER_ENGINE` can be overridden, e.g. `make container CONTAINER_ENGINE=podman`.
 
+## Testing
+
+Three layers of tests cover the service from handler logic up to the shipped container image:
+
+- **Unit tests** in `src/app.rs` and `src/config.rs` exercise handlers and env-var parsing
+  directly, with no HTTP or process-environment involved (env parsing takes an `Option<&str>`
+  parameter instead of reading `std::env` directly, so tests can't race on real env vars).
+- **Integration tests** in `tests/health.rs` drive the real `axum::Router` through
+  `tower::ServiceExt::oneshot` — status codes, JSON bodies, response headers, disallowed
+  HTTP methods, unknown routes, and concurrent requests — without binding a socket.
+- **Container smoke tests** in `scripts/smoke-test.sh` build/run the actual image with
+  Docker or Podman and verify it over real HTTP (`/`, `/healthz`, `/readyz`, a 404 route)
+  plus that the process runs as `nonroot:nonroot`.
+
+```bash
+cargo test           # unit + integration tests
+make smoke-test      # build the image and black-box test the running container
+make all             # fmt + clippy + test + container build + smoke test
+```
+
+CI (`.github/workflows/ci.yml`) runs all three layers on every push/PR.
+
 ## Running with Docker Compose
 
 ```bash
@@ -114,7 +139,8 @@ capabilities, and wires `livenessProbe`/`readinessProbe` to `/healthz` and `/rea
 ## CI
 
 `.github/workflows/ci.yml` runs on every push/PR: `cargo fmt --check`, `cargo clippy
--D warnings`, `cargo test`, then a container build to catch `Dockerfile` regressions.
+-D warnings`, `cargo test`, then a container build plus `scripts/smoke-test.sh` against
+the built image to catch `Dockerfile`/runtime regressions.
 Dependabot (`.github/dependabot.yml`) keeps cargo, Docker, Dev Container, and Action
 versions current.
 

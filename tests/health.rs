@@ -66,3 +66,57 @@ async fn unknown_route_returns_404() {
 
     assert_eq!(response.status(), StatusCode::NOT_FOUND);
 }
+
+#[tokio::test]
+async fn healthz_rejects_disallowed_method() {
+    let response = app()
+        .oneshot(
+            Request::builder()
+                .method("POST")
+                .uri("/healthz")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::METHOD_NOT_ALLOWED);
+}
+
+#[tokio::test]
+async fn root_returns_json_content_type() {
+    let response = app()
+        .oneshot(Request::builder().uri("/").body(Body::empty()).unwrap())
+        .await
+        .unwrap();
+
+    assert_eq!(
+        response.headers().get("content-type").unwrap(),
+        "application/json"
+    );
+}
+
+#[tokio::test]
+async fn handles_many_concurrent_requests() {
+    let router = app();
+    let mut handles = Vec::new();
+    for _ in 0..32 {
+        let router = router.clone();
+        handles.push(tokio::spawn(async move {
+            router
+                .oneshot(
+                    Request::builder()
+                        .uri("/healthz")
+                        .body(Body::empty())
+                        .unwrap(),
+                )
+                .await
+                .unwrap()
+                .status()
+        }));
+    }
+
+    for handle in handles {
+        assert_eq!(handle.await.unwrap(), StatusCode::OK);
+    }
+}

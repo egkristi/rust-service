@@ -46,3 +46,25 @@ async fn healthz() -> &'static str {
 async fn readyz() -> &'static str {
     "ok"
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn healthz_handler_returns_ok_body() {
+        assert_eq!(healthz().await, "ok");
+    }
+
+    #[tokio::test]
+    async fn readyz_handler_returns_ok_body() {
+        assert_eq!(readyz().await, "ok");
+    }
+
+    #[tokio::test]
+    async fn info_handler_reports_package_metadata() {
+        let Json(info) = info().await;
+        assert_eq!(info.name, env!("CARGO_PKG_NAME"));
+        assert_eq!(info.version, env!("CARGO_PKG_VERSION"));
+    }
+}

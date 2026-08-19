@@ -1,6 +1,7 @@
 use std::net::SocketAddr;
 
 use rust_service::app::app;
+use rust_service::config::port_from_env;
 use tokio::signal;
 use tracing_subscriber::EnvFilter;
 
@@ -12,10 +13,7 @@ async fn main() {
         )
         .init();
 
-    let port: u16 = std::env::var("PORT")
-        .ok()
-        .and_then(|p| p.parse().ok())
-        .unwrap_or(8080);
+    let port = port_from_env(std::env::var("PORT").ok().as_deref());
     let addr = SocketAddr::from(([0, 0, 0, 0], port));
 
     let listener = tokio::net::TcpListener::bind(addr)
