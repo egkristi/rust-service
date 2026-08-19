@@ -1,0 +1,49 @@
+# cargo-deny configuration: dependency security advisories, license policy, and
+# supply-chain source checks. Run `cargo deny check` (or `make deny`).
+# Full reference: https://embarkstudios.github.io/cargo-deny/
+
+[graph]
+targets = []
+
+# https://embarkstudios.github.io/cargo-deny/checks/advisories/cfg.html
+[advisories]
+db-urls = ["https://github.com/rustsec/advisory-db"]
+# Fail on any crate version that's been pulled from crates.io after publishing.
+yanked = "deny"
+ignore = []
+
+# https://embarkstudios.github.io/cargo-deny/checks/licenses/cfg.html
+[licenses]
+# Every license actually present in this crate's dependency tree (verified via
+# `cargo deny list`), plus a few other common OSI-approved permissive licenses
+# allowed pre-emptively. Copyleft licenses (GPL/AGPL/LGPL/MPL/...) are
+# intentionally NOT allowed and will fail the check if pulled in.
+allow = [
+  "MIT",
+  "Apache-2.0",
+  "Apache-2.0 WITH LLVM-exception",
+  "BSD-2-Clause",
+  "BSD-3-Clause",
+  "BSL-1.0",
+  "ISC",
+  "Unicode-3.0",
+  "Unlicense",
+  "Zlib",
+  "CC0-1.0",
+]
+confidence-threshold = 0.8
+
+# https://embarkstudios.github.io/cargo-deny/checks/bans/cfg.html
+[bans]
+multiple-versions = "warn"
+# Unpinned "*" version requirements are a supply-chain risk: deny them.
+wildcards = "deny"
+deny = []
+
+# https://embarkstudios.github.io/cargo-deny/checks/sources/cfg.html
+[sources]
+# Only allow crates from the official crates.io index and no ad-hoc git deps,
+# to guard against dependency-confusion / typosquatting supply-chain attacks.
+unknown-registry = "deny"
+unknown-git = "deny"
+allow-registry = ["https://github.com/rust-lang/crates.io-index"]

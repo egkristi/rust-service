@@ -2,6 +2,7 @@ apiVersion: apps/v1
 kind: Deployment
 metadata:
   name: rust-service
+  namespace: rust-service
   labels:
     app: rust-service
 spec:
@@ -14,6 +15,12 @@ spec:
       labels:
         app: rust-service
     spec:
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 65532
+        runAsGroup: 65532
+        seccompProfile:
+          type: RuntimeDefault
       containers:
         - name: rust-service
           image: rust-service:dev
@@ -28,6 +35,9 @@ spec:
             runAsNonRoot: true
             readOnlyRootFilesystem: true
             allowPrivilegeEscalation: false
+            privileged: false
+            seccompProfile:
+              type: RuntimeDefault
             capabilities:
               drop: ["ALL"]
           resources:

@@ -1,4 +1,4 @@
-.PHONY: all binary cargo fmt lint test container smoke-test run container-run container-stop clean help
+.PHONY: all binary cargo fmt lint test container smoke-test deny hadolint secrets-scan dockerfile-scan k8s-scan container-scan security run container-run container-stop clean help
 
 CARGO ?= cargo
 IMAGE_NAME ?= rust-service
@@ -27,6 +27,28 @@ container: ## Build the production container image (docker or podman)
 
 smoke-test: container ## Build the image and black-box test it over real HTTP
 	CONTAINER_ENGINE=$(CONTAINER_ENGINE) IMAGE_NAME=$(IMAGE_NAME) IMAGE_TAG=$(IMAGE_TAG) PORT=$(PORT) ./scripts/smoke-test.sh
+
+deny: ## Check dependency advisories, licenses, bans, and sources (requires cargo-deny)
+	cargo deny check
+
+hadolint: ## Lint the Dockerfile for best practices
+	$(CONTAINER_ENGINE) run --rm -i hadolint/hadolint < Dockerfile
+
+secrets-scan: ## Scan the repo (incl. git history) for accidentally committed secrets
+	$(CONTAINER_ENGINE) run --rm -v $(CURDIR):/repo:ro zricethezav/gitleaks:latest detect --source /repo -v --redact
+
+dockerfile-scan: ## Scan the Dockerfile for security misconfigurations
+	$(CONTAINER_ENGINE) run --rm -v $(CURDIR):/repo:ro -w /repo aquasec/trivy:latest config --ignorefile /repo/.trivyignore Dockerfile
+
+k8s-scan: ## Scan Kubernetes manifests for security misconfigurations
+	$(CONTAINER_ENGINE) run --rm -v $(CURDIR):/repo:ro -w /repo aquasec/trivy:latest config --ignorefile /repo/.trivyignore k8s/
+
+container-scan: container ## Scan the built image for OS/package vulnerabilities (HIGH/CRITICAL)
+	mkdir -p target/security
+	$(CONTAINER_ENGINE) save $(IMAGE_NAME):$(IMAGE_TAG) -o target/security/image.tar
+	$(CONTAINER_ENGINE) run --rm -v $(CURDIR)/target/security/image.tar:/image.tar:ro aquasec/trivy:latest image --input /image.tar --severity HIGH,CRITICAL
+
+security: deny hadolint secrets-scan dockerfile-scan k8s-scan container-scan ## Run all security scans
 
 run: binary ## Run the native binary locally
 	PORT=$(PORT) ./target/release/rust-service

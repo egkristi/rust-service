@@ -1,0 +1,6 @@
+# Trivy ignore list for `trivy config` misconfiguration findings.
+# DS-0026: HEALTHCHECK isn't usable here — the distroless runtime image has no
+# shell/coreutils to run a check command against. Health monitoring is handled
+# by Kubernetes liveness/readiness probes (k8s/deployment.yaml) instead, which
+# is the primary deployment target for this template.
+DS-0026

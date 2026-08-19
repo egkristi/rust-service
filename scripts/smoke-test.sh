@@ -55,8 +55,8 @@ case "$body" in
 esac
 
 user=$("$CONTAINER_ENGINE" inspect "$CONTAINER_NAME" --format '{{.Config.User}}')
-if [ "$user" != "nonroot:nonroot" ]; then
-  echo "FAIL: expected container user nonroot:nonroot, got '${user}'"
+if [ "$user" != "65532:65532" ]; then
+  echo "FAIL: expected container user 65532:65532 (distroless nonroot), got '${user}'"
   exit 1
 fi
 echo "ok: running as ${user}"

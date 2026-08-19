@@ -14,6 +14,9 @@ Kubernetes.
   [distroless](https://github.com/GoogleContainerTools/distroless) runtime image (no shell, no libc, non-root)
 - Kubernetes manifests and a `docker-compose.yml` for local runs
 - GitHub Actions CI (fmt, clippy, tests, container build) and Dependabot for cargo/docker/devcontainer/action updates
+- Security scanning: dependency advisories/licenses (`cargo-deny`), Dockerfile lint
+  (`hadolint`), secret scanning (`gitleaks`), and Dockerfile/Kubernetes/image
+  vulnerability scanning (`trivy`), all runnable locally and enforced in CI
 
 ## Project layout
 
@@ -28,10 +31,12 @@ tests/
 scripts/
   smoke-test.sh  # black-box HTTP tests against the built container image
 .devcontainer/   # VS Code Dev Container definition
-k8s/             # Deployment + Service manifests
+k8s/             # Namespace + Deployment + Service manifests
 Dockerfile       # production, multi-stage container build
 docker-compose.yml
-Makefile         # binary / cargo / container / smoke-test build targets
+Makefile         # binary / cargo / container / smoke-test / security build targets
+deny.toml        # cargo-deny: dependency advisories, license policy, source allow-list
+.trivyignore     # justified suppressions for trivy config findings
 ```
 
 ## Endpoints
@@ -91,7 +96,7 @@ Three layers of tests cover the service from handler logic up to the shipped con
   HTTP methods, unknown routes, and concurrent requests — without binding a socket.
 - **Container smoke tests** in `scripts/smoke-test.sh` build/run the actual image with
   Docker or Podman and verify it over real HTTP (`/`, `/healthz`, `/readyz`, a 404 route)
-  plus that the process runs as `nonroot:nonroot`.
+  plus that the process runs as the non-root `65532:65532` user.
 
 ```bash
 cargo test           # unit + integration tests
@@ -115,13 +120,15 @@ so it satisfies typical cluster Pod Security Standards out of the box. Build/pus
 the image to a registry your cluster can reach, then:
 
 ```bash
-kubectl apply -f k8s/deployment.yaml -f k8s/service.yaml
-kubectl port-forward svc/rust-service 8080:80
+kubectl apply -f k8s/namespace.yaml -f k8s/deployment.yaml -f k8s/service.yaml
+kubectl port-forward -n rust-service svc/rust-service 8080:80
 curl http://localhost:8080/healthz
 ```
 
-`k8s/deployment.yaml` sets `runAsNonRoot`, a read-only root filesystem, drops all
-capabilities, and wires `livenessProbe`/`readinessProbe` to `/healthz` and `/readyz`.
+`k8s/deployment.yaml` runs in its own `rust-service` namespace and sets pod- and
+container-level `securityContext` (`runAsNonRoot`, numeric `runAsUser`/`runAsGroup`,
+a read-only root filesystem, `RuntimeDefault` seccomp, all capabilities dropped),
+and wires `livenessProbe`/`readinessProbe` to `/healthz` and `/readyz`.
 
 ## Container image design
 
@@ -132,7 +139,9 @@ capabilities, and wires `livenessProbe`/`readinessProbe` to `/healthz` and `/rea
   multi-arch builds (e.g. via `docker buildx build --platform linux/amd64,linux/arm64`)
   never need a cross-linker.
 - **Runtime stage**: `gcr.io/distroless/static-debian12:nonroot` — a few MB, no
-  shell, no package manager, and runs as the non-root `nonroot` user by default.
+  shell, no package manager. Runs as the numeric `65532:65532` (distroless's
+  `nonroot` user) instead of the named user, since numeric IDs resolve without
+  an `/etc/passwd` lookup and match Kubernetes `runAsUser` conventions.
 - Dependency compilation is cached in its own Docker layer, so editing `src/`
   doesn't force a full crate-dependency rebuild.
 
@@ -143,6 +152,29 @@ capabilities, and wires `livenessProbe`/`readinessProbe` to `/healthz` and `/rea
 the built image to catch `Dockerfile`/runtime regressions.
 Dependabot (`.github/dependabot.yml`) keeps cargo, Docker, Dev Container, and Action
 versions current.
+
+## Security
+
+`.github/workflows/security.yml` runs on every push/PR plus a weekly schedule (to
+catch newly disclosed CVEs even without code changes):
+
+| Tool | Checks | Local command |
+|------|--------|----------------|
+| [`cargo-deny`](https://embarkstudios.github.io/cargo-deny/) | RustSec advisories, license allow-list (`deny.toml`), banned/duplicate deps, untrusted sources | `make deny` |
+| [`hadolint`](https://github.com/hadolint/hadolint) | Dockerfile best practices | `make hadolint` |
+| [`gitleaks`](https://github.com/gitleaks/gitleaks) | Secrets committed to the repo or its git history | `make secrets-scan` |
+| [`trivy config`](https://trivy.dev/) | Dockerfile and Kubernetes manifest security misconfigurations | `make dockerfile-scan`, `make k8s-scan` |
+| [`trivy image`](https://trivy.dev/) | OS/package vulnerabilities (HIGH/CRITICAL) in the built container image | `make container-scan` |
+
+```bash
+make security   # run every scan above locally (uses podman or docker)
+```
+
+Suppressions are recorded, never silent: `deny.toml` only allows the specific
+permissive licenses this crate's dependency tree actually uses, and `.trivyignore`
+justifies the one intentional exception (no `HEALTHCHECK`, since the distroless
+runtime image has no shell to run one — Kubernetes probes cover that instead).
+The container-image scan also uploads a SARIF report to GitHub's Security tab.
 
 ## License
 

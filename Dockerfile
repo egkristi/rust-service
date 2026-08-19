@@ -9,6 +9,7 @@ FROM rust:1-trixie AS builder
 # Native-compile for musl on whatever CPU architecture is building the image
 # (amd64 or arm64), so multi-arch builds never need a cross-linker.
 ARG TARGETARCH
+# hadolint ignore=DL3008
 RUN set -eu; \
     arch="${TARGETARCH:-}"; \
     if [ -z "$arch" ]; then \
@@ -26,6 +27,8 @@ RUN set -eu; \
     echo "$rust_target" > /tmp/rust_target.txt \
     && rustup target add "$rust_target" \
     && apt-get update \
+    # musl-tools left intentionally unpinned: tracks whatever version ships
+    # with the floating rust:1-trixie base image.
     && apt-get install -y --no-install-recommends musl-tools \
     && rm -rf /var/lib/apt/lists/*
 
@@ -37,9 +40,9 @@ RUN mkdir src \
     && echo "fn main() {}" > src/main.rs \
     && echo "" > src/lib.rs \
     && cargo build --release --target "$(cat /tmp/rust_target.txt)" \
-    && rm -rf target/$(cat /tmp/rust_target.txt)/release/deps/*rust*service* \
-              target/$(cat /tmp/rust_target.txt)/release/rust-service \
-              target/$(cat /tmp/rust_target.txt)/release/.fingerprint/*rust*service*
+    && rm -rf "target/$(cat /tmp/rust_target.txt)/release/deps/"*rust*service* \
+              "target/$(cat /tmp/rust_target.txt)/release/rust-service" \
+              "target/$(cat /tmp/rust_target.txt)/release/.fingerprint/"*rust*service*
 
 COPY src ./src
 RUN cargo build --release --target "$(cat /tmp/rust_target.txt)" \
@@ -54,6 +57,8 @@ COPY --from=builder /usr/local/bin/rust-service /app/rust-service
 
 ENV PORT=8080
 EXPOSE 8080
-USER nonroot:nonroot
+# Numeric UID/GID (distroless's "nonroot" user, 65532:65532): resolvable even
+# without /etc/passwd lookups and matches Kubernetes runAsUser conventions.
+USER 65532:65532
 
 ENTRYPOINT ["/app/rust-service"]

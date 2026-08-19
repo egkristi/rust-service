@@ -17,7 +17,7 @@
       "onAutoForward": "notify"
     }
   },
-  "postCreateCommand": "rustup component add clippy rustfmt && rustup target add x86_64-unknown-linux-musl && cargo fetch",
+  "postCreateCommand": "rustup component add clippy rustfmt && rustup target add x86_64-unknown-linux-musl && cargo fetch && cargo install cargo-deny --locked",
   "customizations": {
     "vscode": {
       "extensions": [

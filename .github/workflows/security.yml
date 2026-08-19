@@ -1,0 +1,90 @@
+name: Security
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  schedule:
+    # Catch newly disclosed advisories/CVEs even when no code has changed.
+    - cron: "0 6 * * 1"
+  workflow_dispatch:
+
+env:
+  CARGO_TERM_COLOR: always
+
+jobs:
+  cargo-deny:
+    name: cargo-deny (advisories, licenses, bans, sources)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: EmbarkStudios/cargo-deny-action@v2
+
+  hadolint:
+    name: hadolint (Dockerfile lint)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Lint Dockerfile
+        run: docker run --rm -i hadolint/hadolint < Dockerfile
+
+  secrets-scan:
+    name: gitleaks (secret scan)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+      - name: Scan for secrets
+        run: docker run --rm -v "$PWD:/repo:ro" zricethezav/gitleaks:latest detect --source /repo -v --redact
+
+  config-scan:
+    name: trivy (Dockerfile + Kubernetes config)
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Scan Dockerfile
+        run: docker run --rm -v "$PWD:/repo:ro" -w /repo aquasec/trivy:latest config --ignorefile /repo/.trivyignore --exit-code 1 Dockerfile
+      - name: Scan Kubernetes manifests
+        run: docker run --rm -v "$PWD:/repo:ro" -w /repo aquasec/trivy:latest config --ignorefile /repo/.trivyignore --exit-code 1 k8s/
+
+  container-scan:
+    name: trivy (built image vulnerabilities)
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      security-events: write
+    steps:
+      - uses: actions/checkout@v4
+      - uses: docker/setup-buildx-action@v3
+      - name: Build image
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: false
+          load: true
+          tags: rust-service:security-scan
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+      - name: Save image to tarball
+        run: docker save rust-service:security-scan -o image.tar
+      - name: Cache trivy vulnerability DB
+        uses: actions/cache@v4
+        with:
+          path: .trivy-cache
+          key: trivy-db-${{ github.run_id }}
+          restore-keys: trivy-db-
+      - name: Scan image for HIGH/CRITICAL vulnerabilities
+        run: |
+          mkdir -p .trivy-cache
+          docker run --rm \
+            -v "$PWD:/work" \
+            -v "$PWD/.trivy-cache:/root/.cache/trivy" \
+            aquasec/trivy:latest image --input /work/image.tar \
+            --format sarif --output /work/trivy-results.sarif \
+            --severity HIGH,CRITICAL --exit-code 1
+      - name: Upload SARIF to code scanning
+        if: always()
+        uses: github/codeql-action/upload-sarif@v3
+        with:
+          sarif_file: trivy-results.sarif
