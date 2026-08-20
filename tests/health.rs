@@ -97,6 +97,36 @@ async fn root_returns_json_content_type() {
 }
 
 #[tokio::test]
+async fn metrics_returns_prometheus_text_format() {
+    // Exercise a route first so the exported metrics aren't empty.
+    let app = app();
+    app.clone()
+        .oneshot(
+            Request::builder()
+                .uri("/healthz")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    let response = app
+        .oneshot(
+            Request::builder()
+                .uri("/metrics")
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    let body = String::from_utf8(body.to_vec()).unwrap();
+    assert!(body.contains("axum_http_requests_total"));
+}
+
+#[tokio::test]
 async fn handles_many_concurrent_requests() {
     let router = app();
     let mut handles = Vec::new();

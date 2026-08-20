@@ -1,5 +1,10 @@
 # rust-service
 
+[![CI](https://github.com/egkristi/rust-service/actions/workflows/ci.yml/badge.svg)](https://github.com/egkristi/rust-service/actions/workflows/ci.yml)
+[![Security](https://github.com/egkristi/rust-service/actions/workflows/security.yml/badge.svg)](https://github.com/egkristi/rust-service/actions/workflows/security.yml)
+[![CD](https://github.com/egkristi/rust-service/actions/workflows/cd.yml/badge.svg)](https://github.com/egkristi/rust-service/actions/workflows/cd.yml)
+[![License: MIT](https://img.shields.io/badge/License-MIT-blue.svg)](LICENSE)
+
 A batteries-included template for building a Rust HTTP service, developing it in a
 VS Code [Dev Container](https://containers.dev/), and shipping it as a small,
 non-root container image that runs unmodified on plain Docker/Podman **or**
@@ -19,6 +24,7 @@ Kubernetes.
   vulnerability scanning (`trivy`), all runnable locally and enforced in CI
 - CD pipeline: multi-arch (amd64/arm64) image published to GHCR, keylessly signed
   with `cosign`, with an SBOM and GitHub Release generated on version tags
+- Prometheus metrics at `/metrics` (request counts/latencies via `axum-prometheus`)
 
 ## Project layout
 
@@ -33,12 +39,13 @@ tests/
 scripts/
   smoke-test.sh  # black-box HTTP tests against the built container image
 .devcontainer/   # VS Code Dev Container definition
-k8s/             # Namespace + Deployment + Service manifests
+k8s/             # Namespace + ServiceAccount + Deployment + Service + PodDisruptionBudget
 Dockerfile       # production, multi-stage container build
 docker-compose.yml
 Makefile         # binary / cargo / container / smoke-test / security build targets
 deny.toml        # cargo-deny: dependency advisories, license policy, source allow-list
 .trivyignore     # justified suppressions for trivy config findings
+SECURITY.md      # vulnerability reporting policy
 ```
 
 ## Endpoints
@@ -48,6 +55,7 @@ deny.toml        # cargo-deny: dependency advisories, license policy, source all
 | GET    | `/`        | Service name/version as JSON               |
 | GET    | `/healthz` | Liveness probe (process is up)              |
 | GET    | `/readyz`  | Readiness probe (ready to accept traffic)   |
+| GET    | `/metrics` | Prometheus-formatted request metrics        |
 
 ## Configuration
 
@@ -122,15 +130,18 @@ so it satisfies typical cluster Pod Security Standards out of the box. Build/pus
 the image to a registry your cluster can reach, then:
 
 ```bash
-kubectl apply -f k8s/namespace.yaml -f k8s/deployment.yaml -f k8s/service.yaml
+kubectl apply -f k8s/
 kubectl port-forward -n rust-service svc/rust-service 8080:80
 curl http://localhost:8080/healthz
 ```
 
-`k8s/deployment.yaml` runs in its own `rust-service` namespace and sets pod- and
-container-level `securityContext` (`runAsNonRoot`, numeric `runAsUser`/`runAsGroup`,
-a read-only root filesystem, `RuntimeDefault` seccomp, all capabilities dropped),
-and wires `livenessProbe`/`readinessProbe` to `/healthz` and `/readyz`.
+`k8s/deployment.yaml` runs in its own `rust-service` namespace, under a dedicated
+`ServiceAccount` with no auto-mounted API token (`k8s/serviceaccount.yaml`), and
+sets pod- and container-level `securityContext` (`runAsNonRoot`, numeric
+`runAsUser`/`runAsGroup`, a read-only root filesystem, `RuntimeDefault` seccomp,
+all capabilities dropped). It wires `livenessProbe`/`readinessProbe` to
+`/healthz` and `/readyz`, and `k8s/poddisruptionbudget.yaml` keeps at least one
+of the two replicas available during voluntary disruptions (node drains, etc.).
 
 ## Container image design
 
@@ -203,9 +214,14 @@ make security   # run every scan above locally (uses podman or docker)
 
 Suppressions are recorded, never silent: `deny.toml` only allows the specific
 permissive licenses this crate's dependency tree actually uses, and `.trivyignore`
-justifies the one intentional exception (no `HEALTHCHECK`, since the distroless
-runtime image has no shell to run one — Kubernetes probes cover that instead).
+justifies both intentional exceptions (no `HEALTHCHECK`, since the distroless
+runtime image has no shell to run one — Kubernetes probes cover that instead;
+and `ghcr.io` isn't in trivy's default trusted-registry list, which otherwise
+only covers Azure ACR/AWS ECR/GCR).
 The container-image scan also uploads a SARIF report to GitHub's Security tab.
+See [SECURITY.md](SECURITY.md) for how to report a vulnerability.
+
+Both `src/main.rs` and `src/lib.rs` carry `#![forbid(unsafe_code)]`.
 
 ## License
 

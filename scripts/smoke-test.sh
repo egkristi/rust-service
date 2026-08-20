@@ -54,6 +54,12 @@ case "$body" in
   *) echo "FAIL: unexpected body from GET /: $body"; exit 1 ;;
 esac
 
+metrics=$(curl -sf "${BASE_URL}/metrics")
+case "$metrics" in
+  *"axum_http_requests_total"*) echo "ok: GET /metrics -> Prometheus text format" ;;
+  *) echo "FAIL: /metrics didn't return Prometheus-formatted output"; exit 1 ;;
+esac
+
 user=$("$CONTAINER_ENGINE" inspect "$CONTAINER_NAME" --format '{{.Config.User}}')
 if [ "$user" != "65532:65532" ]; then
   echo "FAIL: expected container user 65532:65532 (distroless nonroot), got '${user}'"

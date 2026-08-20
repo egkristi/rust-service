@@ -1,0 +1,12 @@
+apiVersion: policy/v1
+kind: PodDisruptionBudget
+metadata:
+  name: rust-service
+  namespace: rust-service
+  labels:
+    app: rust-service
+spec:
+  minAvailable: 1
+  selector:
+    matchLabels:
+      app: rust-service

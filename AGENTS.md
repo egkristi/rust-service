@@ -19,7 +19,7 @@ Kubernetes.
 - `tests/health.rs` — integration tests against the router.
 - `Dockerfile` — multi-stage: `rust:1-trixie` builder (static musl binary,
   arch auto-detected) → `gcr.io/distroless/static-debian12:nonroot` runtime.
-- `k8s/` — Namespace + Deployment + Service manifests.
+- `k8s/` — Namespace + ServiceAccount + Deployment + Service + PodDisruptionBudget.
 - `.github/workflows/` — `ci.yml` (fmt/clippy/test/container/smoke-test),
   `security.yml` (cargo-deny/hadolint/gitleaks/trivy), `cd.yml` (multi-arch
   GHCR publish, cosign signing, SBOM, releases).
@@ -75,6 +75,13 @@ touched dependencies, the `Dockerfile`, or `k8s/*.yaml`, also run the matching
   intentionally references `:edge`, not `:latest` (see the comment above its
   `image:` line) — keep it that way. Keep a release git tag's version in sync
   with `Cargo.toml`'s `version`.
+- **The Prometheus recorder in `src/app.rs` is process-global.** `app()` is
+  called once per test (dozens of times per test binary) plus once in `main`;
+  it builds the `PrometheusMetricLayer`/`PrometheusHandle` pair exactly once
+  via a `OnceLock` and clones it on every call. If you ever stop reusing that
+  `OnceLock`, calling `PrometheusMetricLayer::pair()` more than once per
+  process will panic — you'll see it immediately as every test but the first
+  failing.
 
 ## Reference
 
