@@ -82,6 +82,18 @@ touched dependencies, the `Dockerfile`, or `k8s/*.yaml`, also run the matching
   `OnceLock`, calling `PrometheusMetricLayer::pair()` more than once per
   process will panic — you'll see it immediately as every test but the first
   failing.
+- **Devcontainer feature version bumps aren't covered by CI.** GitHub Actions
+  never builds `.devcontainer/devcontainer.json` — only the production
+  `Dockerfile` — so a Dependabot bump to a devcontainer feature can break
+  local development silently. Case in point: bumping
+  `ghcr.io/devcontainers/features/docker-in-docker` from `2` to `4` broke the
+  devcontainer build, because v4 hard-fails when `moby: true` on Debian
+  trixie (our base image's codename) — `moby-cli` packages no longer exist
+  for trixie. Fix/keep as `"moby": false`, which installs real Docker CE
+  packages instead (upstream's own trixie test scenario uses the same
+  setting). When bumping any `ghcr.io/devcontainers/features/*` version,
+  actually test the devcontainer build (or at least check the feature's
+  `NOTES.md`/`scenarios.json` upstream) instead of merging on green CI alone.
 
 ## Reference
 

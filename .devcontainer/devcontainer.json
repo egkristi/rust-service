@@ -3,7 +3,9 @@
   "image": "mcr.microsoft.com/devcontainers/rust:1-trixie",
   "features": {
     "ghcr.io/devcontainers/features/docker-in-docker:4": {
-      "moby": true
+      // moby-cli isn't packaged for Debian trixie in feature v4+; use real
+      // Docker CE packages instead (still gives a working docker CLI+daemon).
+      "moby": false
     },
     "ghcr.io/devcontainers/features/kubectl-helm-minikube:1": {}
   },
